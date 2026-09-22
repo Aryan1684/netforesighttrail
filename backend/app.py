@@ -63,12 +63,16 @@ def build_payload(result=None,previous_completed=0,previous_packets=0):
 
 def capture_worker():
     global capture_interface,capture_error
+    loop=asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     interface=detect_interface()
     capture_interface=interface
     capture_error=None
     if not Path(TSHARK_PATH).exists():
         capture_error=f"TShark not found: {TSHARK_PATH}"
+        loop.close()
         return
+    capture=None
     try:
         capture=pyshark.LiveCapture(interface=interface,tshark_path=TSHARK_PATH)
         local=local_ips()
@@ -79,6 +83,13 @@ def capture_worker():
                 continue
     except Exception as exc:
         capture_error=f"Live capture unavailable: {exc}"
+    finally:
+        try:
+            if capture is not None:
+                capture.close()
+        except Exception:
+            pass
+        loop.close()
 
 async def broadcast(payload):
     dead=[]
