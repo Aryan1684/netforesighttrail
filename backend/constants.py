@@ -14,7 +14,7 @@ LABELS = [
 ]
 
 PROTO_VALUES = [
-    "udp","arp","tcp","igmp","ospf","sctp","gre","ggp","ip","ipnip","st2",
+    "udp","arp","tcp","icmp","igmp","ospf","sctp","gre","ggp","ip","ipnip","st2",
     "argus","chaos","egp","emcon","nvp","pup","xnet","mux","dcn","hmp","prm",
     "trunk-1","trunk-2","xns-idp","leaf-1","leaf-2","irtp","rdp","netblt",
     "mfe-nsp","merit-inp","3pc","idpr","ddp","idpr-cmtp","tp++","ipv6","sdrp",
@@ -35,7 +35,7 @@ SERVICE_VALUES = [
     "radius", "smtp", "snmp", "ssh", "ssl"
 ]
 
-STATE_VALUES = ["INT", "FIN", "REQ", "ACC", "CON", "RST", "CLO"]
+STATE_VALUES = ["INT", "FIN", "REQ", "ACC", "CON", "RST", "CLO", "ECO", "PAR", "URN", "no"]
 
 PROTO_TO_CODE = {name: idx for idx, name in enumerate(sorted(PROTO_VALUES))}
 SERVICE_TO_CODE = {name: idx for idx, name in enumerate(sorted(SERVICE_VALUES))}
@@ -49,7 +49,7 @@ PORT_SERVICE = {
 }
 
 PROTOCOL_MAP = {
-    1: "unas",
+    1: "icmp",
     6: "tcp",
     17: "udp",
     41: "ipv6",
