@@ -432,8 +432,8 @@ function applyLiveNetworkData(data) {
     if (data.event) STATE.event = data.event;
     if (data.risk !== undefined) STATE.risk = Number(data.risk);
     if (data.next_attack) STATE.next_attack = data.next_attack;
-    if (data.mitre) STATE.mitre = data.mitre;
-    if (data.confidence !== undefined) STATE.confidence = Number(data.confidence);
+    if (data.mitre) STATE.mitre = typeof data.mitre === "string" ? data.mitre : (data.mitre.tactic || data.mitre.technique || "Unmapped");
+    if (data.confidence !== undefined) STATE.confidence = Number(data.confidence);\n    if (data.forecast_confidence !== undefined) STATE.forecastConfidence = Number(data.forecast_confidence);
     if (data.anomaly !== undefined) STATE.anomaly = Number(data.anomaly);
 
     STATE.trafficHistory.push({ flows: STATE.flows, packets: STATE.packets });
