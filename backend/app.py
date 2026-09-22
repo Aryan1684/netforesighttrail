@@ -48,7 +48,7 @@ def severity(risk):
 
 def build_payload(result=None,previous_completed=0,previous_packets=0):
     stats=flow_engine.stats()
-    data={"type":"network_update","time":datetime.now().strftime("%H:%M:%S"),"event":"Collecting completed flows","risk":0,"status":"MONITORING","next_attack":"Analyzing","confidence":0,"flows":max(0,stats["completed_flows"]-previous_completed),"packets":max(0,stats["packets"]-previous_packets),"bytes_per_second":stats["bytes_per_second"],"incoming_packets":stats["incoming_packets"],"outgoing_packets":stats["outgoing_packets"],"active_connections":stats["active_flows"],"completed_flows":stats["completed_flows"],"protocols":stats["protocols"],"source":"pyshark_live_capture","sequence_ready":stats["sequence_ready"],"models":models.status()}
+    data={"type":"network_update","time":datetime.now().strftime("%H:%M:%S"),"event":"Collecting completed flows","risk":0,"status":"MONITORING","next_attack":"Analyzing","confidence":0,"flows":max(0,stats["completed_flows"]-previous_completed),"packets":max(0,stats["packets"]-previous_packets),"packets_per_second":stats["packets_per_second"],"bytes_per_second":stats["bytes_per_second"],"incoming_packets":stats["incoming_packets"],"outgoing_packets":stats["outgoing_packets"],"active_connections":stats["active_flows"],"completed_flows":stats["completed_flows"],"flows_per_sec":stats["completed_flows"]/max(1,stats["packets"]/max(stats["packets_per_second"],1e-6)) if stats["packets_per_second"] else 0,"protocols":stats["protocols"],"source":"pyshark_live_capture","sequence_ready":stats["sequence_ready"],"models":models.status()}
     if result is None:
         data["event"]="Collecting five completed flows" if not stats["sequence_ready"] else "Analyzing live traffic"
         return data
