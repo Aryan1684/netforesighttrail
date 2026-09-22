@@ -12,7 +12,7 @@ from qwen_explainer import QwenExplainer
 
 ROOT=Path(__file__).resolve().parents[1]
 MODEL_DIR=ROOT/"models"
-TSHARK_PATH=os.getenv("NETFORESIGHT_TSHARK_PATH",r"C:\Program Files\Wireshark\tshark.exe")
+TSHARK_PATH=os.getenv("NETFORESIGHT_TSHARK_PATH",r"C:Program FilesWireshark	shark.exe")
 INTERFACE=os.getenv("NETFORESIGHT_INTERFACE","")
 flow_engine=FlowEngine(idle_timeout=float(os.getenv("NETFORESIGHT_FLOW_IDLE_TIMEOUT","5")),active_timeout=float(os.getenv("NETFORESIGHT_FLOW_ACTIVE_TIMEOUT","30")),sequence_length=5)
 models=ModelPipeline(MODEL_DIR)
@@ -20,6 +20,8 @@ qwen=QwenExplainer()
 app=FastAPI(title="NetForeSight",version="4.0")
 app.add_middleware(CORSMiddleware,allow_origins=["*"],allow_credentials=False,allow_methods=["*"],allow_headers=["*"])
 clients:set[WebSocket]=set()
+capture_interface=None
+capture_error=None
 latest_update={"type":"network_update","time":datetime.now().strftime("%H:%M:%S"),"event":"Starting live monitoring","risk":0,"status":"STARTING","next_attack":"Analyzing","confidence":0,"flows":0,"packets":0,"sequence_ready":False,"source":"starting"}
 
 def local_ips():
@@ -40,7 +42,8 @@ def detect_interface():
         for line in output.splitlines():
             n=line.split(".",1)[0].strip()
             if n.isdigit() and "Loopback" not in line:return n
-    except Exception:pass
+    except Exception:
+        pass
     return "5"
 
 def severity(risk):
@@ -48,7 +51,10 @@ def severity(risk):
 
 def build_payload(result=None,previous_completed=0,previous_packets=0):
     stats=flow_engine.stats()
-    data={"type":"network_update","time":datetime.now().strftime("%H:%M:%S"),"event":"Collecting completed flows","risk":0,"status":"MONITORING","next_attack":"Analyzing","confidence":0,"flows":max(0,stats["completed_flows"]-previous_completed),"packets":max(0,stats["packets"]-previous_packets),"packets_per_second":stats["packets_per_second"],"bytes_per_second":stats["bytes_per_second"],"incoming_packets":stats["incoming_packets"],"outgoing_packets":stats["outgoing_packets"],"active_connections":stats["active_flows"],"completed_flows":stats["completed_flows"],"flows_per_sec":stats["completed_flows"]/max(1,stats["packets"]/max(stats["packets_per_second"],1e-6)) if stats["packets_per_second"] else 0,"protocols":stats["protocols"],"source":"pyshark_live_capture","sequence_ready":stats["sequence_ready"],"models":models.status()}
+    data={"type":"network_update","time":datetime.now().strftime("%H:%M:%S"),"event":"Collecting completed flows","risk":0,"status":"MONITORING","next_attack":"Analyzing","confidence":0,"flows":max(0,stats["completed_flows"]-previous_completed),"packets":max(0,stats["packets"]-previous_packets),"packets_per_second":stats["packets_per_second"],"bytes_per_second":stats["bytes_per_second"],"incoming_packets":stats["incoming_packets"],"outgoing_packets":stats["outgoing_packets"],"active_connections":stats["active_flows"],"completed_flows":stats["completed_flows"],"flows_per_sec":stats["completed_flows"]/max(1,stats["packets"]/max(stats["packets_per_second"],1e-6)) if stats["packets_per_second"] else 0,"protocols":stats["protocols"],"source":"pyshark_live_capture","sequence_ready":stats["sequence_ready"],"models":models.status(),"capture_interface":capture_interface}
+    if capture_error:
+        data["capture_error"]=capture_error
+        data["status"]="ERROR"
     if result is None:
         data["event"]="Collecting five completed flows" if not stats["sequence_ready"] else "Analyzing live traffic"
         return data
@@ -56,17 +62,23 @@ def build_payload(result=None,previous_completed=0,previous_packets=0):
     return data
 
 def capture_worker():
+    global capture_interface,capture_error
     interface=detect_interface()
+    capture_interface=interface
+    capture_error=None
     if not Path(TSHARK_PATH).exists():
-        latest_update.update({"event":"TShark not found","status":"ERROR","source":"capture_error"});return
+        capture_error=f"TShark not found: {TSHARK_PATH}"
+        return
     try:
         capture=pyshark.LiveCapture(interface=interface,tshark_path=TSHARK_PATH)
-        latest_update["capture_interface"]=interface
         local=local_ips()
         for packet in capture.sniff_continuously():
-            try:flow_engine.ingest(packet,local)
-            except Exception:continue
-    except Exception as exc:latest_update.update({"event":f"Live capture unavailable: {exc}","status":"ERROR","source":"capture_error"})
+            try:
+                flow_engine.ingest(packet,local)
+            except Exception:
+                continue
+    except Exception as exc:
+        capture_error=f"Live capture unavailable: {exc}"
 
 async def broadcast(payload):
     dead=[]
@@ -87,7 +99,7 @@ async def inference_loop():
         if window is not None and models.loaded:
             try:result=models.predict(window)
             except Exception as exc:
-                latest_update={"type":"error","time":datetime.now().strftime("%H:%M:%S"),"event":"Model inference failed","message":str(exc)}
+                latest_update={"type":"error","time":datetime.now().strftime("%H:%M:%S"),"event":"Model inference failed","message":str(exc),"capture_interface":capture_interface}
                 await broadcast(latest_update);continue
         payload=build_payload(result,previous_completed,previous_packets)
         previous_completed,previous_packets=stats["completed_flows"],stats["packets"]
@@ -103,7 +115,7 @@ async def inference_loop():
 async def root():return {"service":"NetForeSight","status":"online","models_loaded":models.loaded,"websocket":"/ws/alerts"}
 
 @app.get("/api/health")
-async def health():return {"status":"online" if models.loaded else "degraded","models":models.status(),"qwen":qwen.config(),"capture":{**flow_engine.stats(),"interface":latest_update.get("capture_interface"),"tshark":TSHARK_PATH}}
+async def health():return {"status":"online" if models.loaded else "degraded","models":models.status(),"qwen":qwen.config(),"capture":{**flow_engine.stats(),"interface":capture_interface,"error":capture_error,"tshark":TSHARK_PATH}}
 
 @app.get("/api/capture/stats")
 async def capture_stats():return flow_engine.stats()
