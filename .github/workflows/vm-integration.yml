@@ -1,0 +1,59 @@
+name: VM Integration Quality
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux-vm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy pandas scikit-learn xgboost torch joblib shap fastapi uvicorn pyshark httpx
+
+      - name: Install TShark
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tshark
+          tshark --version
+          tshark -D
+
+      - name: Download trained artifacts
+        run: |
+          mkdir -p models
+          curl -L --fail -o models/feature_scaler.pkl https://raw.githubusercontent.com/TheWizardKingg/NetForesight/main/backend/feature_scaler.pkl
+          curl -L --fail -o models/label_encoder.pkl https://raw.githubusercontent.com/TheWizardKingg/NetForesight/main/backend/label_encoder.pkl
+          curl -L --fail -o models/feature_names.pkl https://raw.githubusercontent.com/TheWizardKingg/NetForesight/main/backend/feature_names.pkl
+          curl -L --fail -o models/xgboost_model.pkl https://raw.githubusercontent.com/TheWizardKingg/NetForesight/main/backend/xgboost_model.pkl
+          curl -L --fail -o models/transformer_forecaster.pt https://raw.githubusercontent.com/TheWizardKingg/NetForesight/main/backend/transformer_forecaster.pt
+          ls -lh models
+
+      - name: Python syntax
+        run: python -m compileall backend
+
+      - name: Model contract
+        run: python backend/test_contract.py
+
+      - name: Model runtime smoke test
+        run: python backend/test_models.py
+
+      - name: Flow engine smoke test
+        run: python backend/test_flow_engine.py
+
+      - name: Frontend JavaScript syntax
+        run: node --check frontend/script.js
