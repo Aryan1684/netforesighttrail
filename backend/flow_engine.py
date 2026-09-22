@@ -52,7 +52,10 @@ class FlowState:
         if len(records) < 2:
             return []
         ordered = sorted(records, key=lambda x: x.timestamp)
-        return [(ordered[i].timestamp - ordered[i - 1].timestamp) * 1000.0 for i in range(1, len(ordered))]
+        return [
+            (ordered[i].timestamp - ordered[i - 1].timestamp) * 1000.0
+            for i in range(1, len(ordered))
+        ]
 
     def _jit(self, iats: list[float]) -> float:
         if len(iats) < 2:
@@ -63,7 +66,6 @@ class FlowState:
         fwd = self._direction(True)
         bwd = self._direction(False)
         duration = max(self.last_seen - self.started_at, 0.000001)
-        all_lengths = [p.length for p in self.packets]
         fwd_bytes = sum(p.length for p in fwd)
         bwd_bytes = sum(p.length for p in bwd)
         total_packets = len(self.packets)
@@ -73,6 +75,7 @@ class FlowState:
         bwd_ttl = bwd[-1].ttl if bwd else 0
         fwd_loss = self._loss_count(fwd)
         bwd_loss = self._loss_count(bwd)
+
         syn_time = None
         syn_ack_time = None
         first_ack_time = None
@@ -83,8 +86,18 @@ class FlowState:
                 syn_ack_time = p.timestamp
             if p.ack and not p.syn and first_ack_time is None:
                 first_ack_time = p.timestamp
-        synack = max(0.0, syn_ack_time - syn_time) if syn_time is not None and syn_ack_time is not None else 0.0
-        ackdat = max(0.0, first_ack_time - syn_ack_time) if syn_ack_time is not None and first_ack_time is not None else 0.0
+
+        synack = (
+            max(0.0, syn_ack_time - syn_time)
+            if syn_time is not None and syn_ack_time is not None
+            else 0.0
+        )
+        ackdat = (
+            max(0.0, first_ack_time - syn_ack_time)
+            if syn_ack_time is not None and first_ack_time is not None
+            else 0.0
+        )
+        tcprtt = synack + ackdat
         http_depth = max((p.http_depth for p in self.packets), default=0)
         response_body_len = sum(p.http_body_len for p in self.packets)
         ftp_login = 1 if any(p.ftp_command.upper() in {"USER", "PASS"} for p in self.packets) else 0
@@ -123,6 +136,8 @@ class FlowState:
             "swin": next((p.window for p in fwd if p.window), 0),
             "stcpb": next((p.seq for p in fwd if p.seq), 0),
             "dtcpb": next((p.seq for p in bwd if p.seq), 0),
+            "dwin": next((p.window for p in bwd if p.window), 0),
+            "tcprtt": tcprtt,
             "synack": synack,
             "ackdat": ackdat,
             "smean": statistics.mean([p.length for p in fwd]) if fwd else 0.0,
@@ -170,7 +185,13 @@ class FlowState:
 
 
 class FlowEngine:
-    def __init__(self, idle_timeout: float = 5.0, active_timeout: float = 30.0, sequence_length: int = 5, context_seconds: float = 60.0):
+    def __init__(
+        self,
+        idle_timeout: float = 5.0,
+        active_timeout: float = 30.0,
+        sequence_length: int = 5,
+        context_seconds: float = 60.0,
+    ):
         self.idle_timeout = idle_timeout
         self.active_timeout = active_timeout
         self.sequence_length = sequence_length
@@ -273,7 +294,19 @@ class FlowEngine:
     @staticmethod
     def service_name(packet: Any, dst_port: int) -> str:
         layer = str(getattr(packet, "highest_layer", "") or "")
-        return next((name for port, name in [(20,"ftp-data"),(21,"ftp"),(22,"ssh"),(25,"smtp"),(53,"dns"),(67,"dhcp"),(68,"dhcp"),(80,"http"),(110,"pop3"),(161,"snmp"),(162,"snmp"),(443,"ssl"),(1812,"radius"),(1813,"radius"),(6667,"irc")] if dst_port == port), layer.lower())
+        return next(
+            (
+                name
+                for port, name in [
+                    (20, "ftp-data"), (21, "ftp"), (22, "ssh"), (25, "smtp"),
+                    (53, "dns"), (67, "dhcp"), (68, "dhcp"), (80, "http"),
+                    (110, "pop3"), (161, "snmp"), (162, "snmp"), (443, "ssl"),
+                    (1812, "radius"), (1813, "radius"), (6667, "irc")
+                ]
+                if dst_port == port
+            ),
+            layer.lower(),
+        )
 
     @staticmethod
     def http_metadata(packet: Any) -> tuple[str, int, int]:
@@ -302,7 +335,14 @@ class FlowEngine:
                 return value.split()[0]
         return ""
 
-    def _flow_key(self, src: str, dst: str, src_port: int, dst_port: int, proto: int) -> tuple[str, str, int, int, int]:
+    def _flow_key(
+        self,
+        src: str,
+        dst: str,
+        src_port: int,
+        dst_port: int,
+        proto: int,
+    ) -> tuple[str, str, int, int, int]:
         a = (src, src_port)
         b = (dst, dst_port)
         if a <= b:
@@ -316,8 +356,15 @@ class FlowEngine:
         dst = flow.first_dst
         dport = flow.dst_port
         sport = flow.src_port
-        state = flow.feature_row({k: 0 for k in ("ct_srv_src","ct_state_ttl","ct_dst_ltm","ct_src_dport_ltm","ct_dst_sport_ltm","ct_dst_src_ltm","ct_src_ltm","ct_srv_dst")})[3]
-        ttl = flow.feature_row({k: 0 for k in ("ct_srv_src","ct_state_ttl","ct_dst_ltm","ct_src_dport_ltm","ct_dst_sport_ltm","ct_dst_src_ltm","ct_src_ltm","ct_srv_dst")})[9]
+        zeros = {
+            k: 0
+            for k in (
+                "ct_srv_src", "ct_state_ttl", "ct_dst_ltm", "ct_src_dport_ltm",
+                "ct_dst_sport_ltm", "ct_dst_src_ltm", "ct_src_ltm", "ct_srv_dst"
+            )
+        }
+        state = flow.feature_row(zeros)[3]
+        ttl = flow.feature_row(zeros)[9]
         service = flow.service_name
         rows = list(self.recent)
         return {
@@ -356,7 +403,12 @@ class FlowEngine:
             self.flows[key] = flow
             forward = True
         else:
-            forward = src == flow.first_src and dst == flow.first_dst and src_port == flow.src_port and dst_port == flow.dst_port
+            forward = (
+                src == flow.first_src
+                and dst == flow.first_dst
+                and src_port == flow.src_port
+                and dst_port == flow.dst_port
+            )
 
         window, seq, ack_num = self.tcp_values(packet)
         method, depth, body = self.http_metadata(packet)
@@ -392,7 +444,14 @@ class FlowEngine:
         now = timestamp
         completed = []
         for fkey, state in list(self.flows.items()):
-            if now - state.last_seen >= self.idle_timeout or now - state.started_at >= self.active_timeout or (state.protocol == 6 and any(p.fin or p.rst for p in state.packets)):
+            if (
+                now - state.last_seen >= self.idle_timeout
+                or now - state.started_at >= self.active_timeout
+                or (
+                    state.protocol == 6
+                    and any(p.fin or p.rst for p in state.packets)
+                )
+            ):
                 self.flows.pop(fkey, None)
                 context = self._context(state, now)
                 vector = state.feature_row(context)
