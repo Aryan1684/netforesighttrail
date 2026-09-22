@@ -411,12 +411,13 @@ function updateUI() {
         row.classList.toggle("active-row", activeMitre.includes(tactic));
     });
 
-    // Animate mini bars
+    const recent = STATE.trafficHistory.slice(-5);
+    const maxPackets = Math.max(1, ...recent.map(d => Number(d.packets) || 0));
     for (let i = 0; i < 5; i++) {
         const bar = document.getElementById(`bar${i}`);
         if (bar) {
-            const h = Math.min(95, Math.max(15, (STATE.packets / 2) + rand(-5, 5)));
-            bar.style.height = h + "%";
+            const value = Number(recent[i]?.packets || 0);
+            bar.style.height = Math.min(95, Math.max(8, (value / maxPackets) * 95)) + "%";
         }
     }
 
