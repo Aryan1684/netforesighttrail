@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+pyshark
+psutil
+numpy
+pandas
+scikit-learn
+xgboost
+shap
+torch
+httpx
+joblib
