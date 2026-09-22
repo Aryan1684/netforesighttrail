@@ -13,7 +13,7 @@ class QwenExplainer:
         )
         self.model = os.getenv(
             "NETFORESIGHT_QWEN_MODEL",
-            "qwen2.5:3b-instruct",
+            "qwen2.5:3b",
         )
         self.timeout = float(os.getenv("NETFORESIGHT_QWEN_TIMEOUT", "60"))
 
@@ -23,9 +23,7 @@ class QwenExplainer:
             "Use only the supplied model outputs. Do not invent attacks, evidence, or facts. "
             "Return a concise analyst-facing explanation with four sections: "
             "Threat Summary, Temporal Forecast, Feature Attribution, Mitigation Steps. "
-            "This is a defensive monitoring system.
-
-"
+            "This is a defensive monitoring system.\n\n"
             + str(payload)
         )
 
@@ -65,13 +63,11 @@ class QwenExplainer:
         return (
             f"Threat Summary: Detected {detection.get('predicted_attack', 'Unknown')} "
             f"with {detection.get('confidence', 0):.1f}% confidence; "
-            f"risk score {risk.get('score', 0)}.
-"
+            f"risk score {risk.get('score', 0)}.\n"
             f"Temporal Forecast: {forecast.get('predicted_next_attack', 'Unknown')} "
-            f"with {forecast.get('probability', 0):.1f}% probability.
-"
-            f"Feature Attribution: {trigger_text}.
-"
+            f"with {forecast.get('probability', 0):.1f}% probability.\n"
+            f"Feature Attribution: {trigger_text}.\n"
             "Mitigation Steps: Validate the alert against surrounding traffic and "
             "review affected connections before taking containment action."
         )
+    
