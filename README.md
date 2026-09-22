@@ -1,26 +1,36 @@
 # NetForeSight Integration
 
-Live TShark packets -> bidirectional flow aggregation -> exact 16 CIC-style features -> 5-flow sequence -> trained XGBoost detection + trained Transformer forecast -> SHAP attribution -> MITRE mapping -> optional local Qwen explanation -> FastAPI -> WebSocket -> existing dashboard.
+## Workflow
+TShark live packets -> bidirectional flow aggregation -> 40 UNSW-NB15-compatible features -> five completed-flow sequence -> StandardScaler -> XGBoost current detection + Transformer next-state forecast -> SHAP -> MITRE mapping -> local Qwen explanation -> FastAPI/WebSocket -> dashboard.
 
-No training is performed here.
+## Fixed issues
+- No packet-level zero-placeholder inference.
+- Real bidirectional flow state is maintained.
+- Inference waits for five completed flows instead of zero-padding.
+- XGBoost uses the latest scaled flow, matching the training script.
+- Transformer uses the exact five-by-40 sequence contract.
+- SHAP is constructed from the loaded XGBoost model at runtime.
+- MITRE mapping and path priority are returned with every prediction.
+- Qwen uses the local Ollama API and has a deterministic fallback.
+- TShark Wi-Fi interface is auto-detected unless NETFORESIGHT_INTERFACE is set.
+- Runtime health and model status endpoints are included.
 
-Trained artifacts are downloaded by setup.cmd from the source model repository:
-- feature_scaler.pkl
-- label_encoder.pkl
-- xgboost_model.pkl
-- shap_explainer.pkl
-- transformer_forecaster.pt
+## Setup
+Run setup.cmd.
 
-Qwen is an optional local explanation layer. Install Ollama, then run:
-ollama pull qwen2.5:3b-instruct
-ollama list
+Then verify with:
+.venv\Scripts\activate
+python backend\verify_runtime.py
 
-Windows:
-1. Run setup.cmd.
-2. Install/start Ollama and pull Qwen.
-3. Run run.cmd.
-4. Open http://127.0.0.1:5500
+Start with backend\run.cmd.
 
-The backend expects TShark at C:\Program Files\Wireshark\tshark.exe and Wi-Fi interface 5. Change NETFORESIGHT_INTERFACE if tshark -D shows another interface.
+Serve the frontend:
+cd frontend
+python -m http.server 5500
 
-The trained models require five completed flow records before inference. This is deliberate because the trained input shape is (5, 16).
+Open http://127.0.0.1:5500
+
+## Model compatibility note
+The source repository did not persist the categorical encoders used for proto, service, and state. This integration reconstructs deterministic UNSW vocabularies for those fields. Exact reproduction of those three encoders requires the original training dataset or saved encoders. The runtime refuses incompatible feature dimensions rather than silently accepting the wrong shape.
+
+Qwen is explanation-only. It does not generate the prediction.
