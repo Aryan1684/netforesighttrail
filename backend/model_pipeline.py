@@ -79,14 +79,20 @@ class ModelPipeline:
 
         from constants import FEATURE_NAMES, LABELS
         if self.feature_names != FEATURE_NAMES:
-            raise ValueError(f"Feature contract mismatch. Artifact: {self.feature_names}; expected: {FEATURE_NAMES}")
+            raise ValueError(
+                f"Feature contract mismatch. Artifact: {self.feature_names}; expected: {FEATURE_NAMES}"
+            )
         if list(self.label_encoder.classes_) != LABELS:
-            raise ValueError(f"Label contract mismatch. Artifact: {list(self.label_encoder.classes_)}; expected: {LABELS}")
+            raise ValueError(
+                f"Label contract mismatch. Artifact: {list(self.label_encoder.classes_)}; expected: {LABELS}"
+            )
         if int(getattr(self.feature_scaler, "n_features_in_", 0)) != len(FEATURE_NAMES):
             raise ValueError("Scaler feature count does not match the live feature contract.")
         xgb_features = int(getattr(self.xgboost_model, "n_features_in_", len(FEATURE_NAMES)))
         if xgb_features != len(FEATURE_NAMES):
-            raise ValueError(f"XGBoost expects {xgb_features} features, live contract provides {len(FEATURE_NAMES)}.")
+            raise ValueError(
+                f"XGBoost expects {xgb_features} features, live contract provides {len(FEATURE_NAMES)}."
+            )
 
         self.class_names = [str(x) for x in self.label_encoder.classes_]
         self.transformer_model = AttackForecasterTransformer(
@@ -107,8 +113,8 @@ class ModelPipeline:
         if not self.loaded:
             raise RuntimeError("Model pipeline is not loaded")
         raw = np.asarray(raw_window, dtype=np.float32)
-        if raw.shape != (5, 40):
-            raise ValueError(f"Expected window shape (5, 40), got {raw.shape}")
+        if raw.shape != (5, 42):
+            raise ValueError(f"Expected window shape (5, 42), got {raw.shape}")
 
         scaled = self.feature_scaler.transform(raw)
         latest = scaled[-1].reshape(1, -1)
