@@ -1,290 +1,141 @@
 from __future__ import annotations
-
-import asyncio
-import json
-import os
-import threading
-from collections import deque
+import asyncio, os, socket, subprocess, threading
 from datetime import datetime
 from pathlib import Path
-
-import psutil
-import pyshark
+import psutil, pyshark
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-
 from flow_engine import FlowEngine
-from mitre_mapper import map_label, path_priority
+from mitre_mapper import map_label, priority
 from model_pipeline import ModelPipeline
 from qwen_explainer import QwenExplainer
 
+ROOT=Path(__file__).resolve().parents[1]
+MODEL_DIR=ROOT/"models"
+TSHARK_PATH=os.getenv("NETFORESIGHT_TSHARK_PATH",r"C:\Program Files\Wireshark\tshark.exe")
+INTERFACE=os.getenv("NETFORESIGHT_INTERFACE","")
+flow_engine=FlowEngine(idle_timeout=float(os.getenv("NETFORESIGHT_FLOW_IDLE_TIMEOUT","5")),active_timeout=float(os.getenv("NETFORESIGHT_FLOW_ACTIVE_TIMEOUT","30")),sequence_length=5)
+models=ModelPipeline(MODEL_DIR)
+qwen=QwenExplainer()
+app=FastAPI(title="NetForeSight",version="4.0")
+app.add_middleware(CORSMiddleware,allow_origins=["*"],allow_credentials=False,allow_methods=["*"],allow_headers=["*"])
+clients:set[WebSocket]=set()
+latest_update={"type":"network_update","time":datetime.now().strftime("%H:%M:%S"),"event":"Starting live monitoring","risk":0,"status":"STARTING","next_attack":"Analyzing","confidence":0,"flows":0,"packets":0,"sequence_ready":False,"source":"starting"}
 
-ROOT = Path(__file__).resolve().parents[1]
-MODEL_DIR = ROOT / "models"
+def local_ips():
+    result=set()
+    for addresses in psutil.net_if_addrs().values():
+        for addr in addresses:
+            if getattr(addr,"family",None) in {socket.AF_INET,socket.AF_INET6}: result.add(str(addr.address).split("%")[0])
+    return result
 
-app = FastAPI(title="NetForeSight Integration")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-flow_engine = FlowEngine(
-    idle_timeout=float(os.getenv("NETFORESIGHT_FLOW_IDLE_TIMEOUT", "5")),
-    active_timeout=float(os.getenv("NETFORESIGHT_FLOW_ACTIVE_TIMEOUT", "30")),
-)
-models = ModelPipeline(MODEL_DIR)
-qwen = QwenExplainer()
-sequence_history = deque(maxlen=100)
-latest_update: dict = {}
-clients: set[WebSocket] = set()
-
-
-def load_models_once() -> None:
-    models.load()
-
-
-def snapshot_fallback() -> dict:
-    counters = psutil.net_io_counters()
-    connections = psutil.net_connections(kind="inet")
-    active = sum(
-        1 for c in connections
-        if c.status in {"ESTABLISHED", "SYN_SENT", "SYN_RECV"}
-    )
-    return {
-        "packets": counters.packets_sent + counters.packets_recv,
-        "bytes": counters.bytes_sent + counters.bytes_recv,
-        "active_flows": active,
-        "protocols": {},
-    }
-
-
-def make_update(inference: dict | None) -> dict:
-    stats = flow_engine.stats()
-    fallback = snapshot_fallback()
-
-    base = {
-        "type": "network_update",
-        "time": datetime.now().strftime("%H:%M:%S"),
-        "source": "pyshark_live_capture",
-        "flows": stats["active_flows"],
-        "packets": stats["packets"],
-        "bytes": stats["bytes"],
-        "protocols": stats["protocols"],
-        "sequence_ready": stats["sequence_ready"],
-        "models_loaded": models.loaded,
-    }
-
-    if not inference:
-        base.update(
-            {
-                "event": "Collecting flow history",
-                "risk": 0,
-                "status": "MONITORING",
-                "next_attack": "Analyzing",
-                "confidence": 0,
-                "mitre": None,
-                "path_priority": None,
-                "explanation": "Waiting for five completed flow records before model inference.",
-            }
-        )
-        return base
-
-    result = inference
-    mitre = map_label(result.current_label)
-    priority = path_priority(
-        result.current_label,
-        result.next_label,
-        result.current_confidence,
-        result.next_confidence,
-        result.risk_score,
-    )
-
-    payload = {
-        "current_detection": {
-            "predicted_attack": result.current_label,
-            "confidence": result.current_confidence * 100,
-            "probabilities": {
-                k: v * 100 for k, v in result.current_probabilities.items()
-            },
-        },
-        "next_stage_forecast": {
-            "predicted_next_attack": result.next_label,
-            "probability": result.next_confidence * 100,
-            "probabilities": {
-                k: v * 100 for k, v in result.next_probabilities.items()
-            },
-        },
-        "risk_assessment": {
-            "score": result.risk_score,
-            "severity": (
-                "CRITICAL" if result.risk_score > 75
-                else "ELEVATED" if result.risk_score > 45
-                else "LOW"
-            ),
-        },
-        "top_shap_triggers": result.shap_triggers,
-    }
-
-    explanation = sequence_history[-1].get("explanation", "") if sequence_history else ""
-    base.update(
-        {
-            "event": f"Detected: {result.current_label}",
-            "risk": result.risk_score,
-            "status": payload["risk_assessment"]["severity"],
-            "next_attack": result.next_label,
-            "confidence": round(result.current_confidence * 100, 2),
-            "current_stage": result.current_label,
-            "prediction": payload["next_stage_forecast"],
-            "detection": payload["current_detection"],
-            "mitre": mitre,
-            "path_priority": priority,
-            "top_triggers": result.shap_triggers,
-            "explanation": explanation or "Generating local analyst explanation.",
-        }
-    )
-    return base
-
-
-async def broadcast(data: dict) -> None:
-    dead = []
-    for ws in list(clients):
-        try:
-            await ws.send_json(data)
-        except Exception:
-            dead.append(ws)
-    for ws in dead:
-        clients.discard(ws)
-
-
-def capture_worker() -> None:
-    interface = os.getenv("NETFORESIGHT_INTERFACE", "5")
-    tshark_path = os.getenv(
-        "NETFORESIGHT_TSHARK_PATH",
-        r"C:\Program Files\Wireshark\tshark.exe",
-    )
-
-    capture = None
+def detect_interface():
+    if INTERFACE:return INTERFACE
     try:
-        capture = pyshark.LiveCapture(
-            interface=interface,
-            tshark_path=tshark_path,
-        )
+        output=subprocess.check_output([TSHARK_PATH,"-D"],text=True,timeout=10)
+        for line in output.splitlines():
+            if "Wi-Fi" in line or "WiFi" in line:
+                n=line.split(".",1)[0].strip()
+                if n.isdigit():return n
+        for line in output.splitlines():
+            n=line.split(".",1)[0].strip()
+            if n.isdigit() and "Loopback" not in line:return n
+    except Exception:pass
+    return "5"
+
+def severity(risk):
+    return "CRITICAL" if risk>=76 else "ELEVATED" if risk>=46 else "MONITORING"
+
+def build_payload(result=None,previous_completed=0,previous_packets=0):
+    stats=flow_engine.stats()
+    data={"type":"network_update","time":datetime.now().strftime("%H:%M:%S"),"event":"Collecting completed flows","risk":0,"status":"MONITORING","next_attack":"Analyzing","confidence":0,"flows":max(0,stats["completed_flows"]-previous_completed),"packets":max(0,stats["packets"]-previous_packets),"bytes_per_second":stats["bytes_per_second"],"incoming_packets":stats["incoming_packets"],"outgoing_packets":stats["outgoing_packets"],"active_connections":stats["active_flows"],"completed_flows":stats["completed_flows"],"protocols":stats["protocols"],"source":"pyshark_live_capture","sequence_ready":stats["sequence_ready"],"models":models.status()}
+    if result is None:
+        data["event"]="Collecting five completed flows" if not stats["sequence_ready"] else "Analyzing live traffic"
+        return data
+    data.update({"event":f"Detected: {result.current_label}","risk":result.risk_score,"status":severity(result.risk_score),"next_attack":result.next_label,"current_stage":result.current_label,"confidence":round(result.current_confidence*100,2),"forecast_confidence":round(result.next_confidence*100,2),"prediction":{"predicted_next_attack":result.next_label,"probability":round(result.next_confidence*100,2),"probabilities":{k:round(v*100,2) for k,v in result.next_probabilities.items()}},"detection":{"predicted_attack":result.current_label,"confidence":round(result.current_confidence*100,2),"probabilities":{k:round(v*100,2) for k,v in result.current_probabilities.items()}},"mitre":map_label(result.current_label),"path_priority":priority(result.current_confidence,result.next_confidence,result.risk_score),"top_triggers":result.shap_triggers,"explanation":"Generating analyst explanation..."})
+    return data
+
+def capture_worker():
+    interface=detect_interface()
+    if not Path(TSHARK_PATH).exists():
+        latest_update.update({"event":"TShark not found","status":"ERROR","source":"capture_error"});return
+    try:
+        capture=pyshark.LiveCapture(interface=interface,tshark_path=TSHARK_PATH)
+        latest_update["capture_interface"]=interface
+        local=local_ips()
         for packet in capture.sniff_continuously():
-            for vector in flow_engine.ingest(packet):
-                sequence_history.append({"window": vector})
-    except Exception as exc:
-        sequence_history.append({"capture_error": str(exc)})
-    finally:
-        if capture is not None:
-            try:
-                capture.close()
-            except Exception:
-                pass
+            try:flow_engine.ingest(packet,local)
+            except Exception:continue
+    except Exception as exc:latest_update.update({"event":f"Live capture unavailable: {exc}","status":"ERROR","source":"capture_error"})
 
+async def broadcast(payload):
+    dead=[]
+    for ws in list(clients):
+        try:await ws.send_json(payload)
+        except Exception:dead.append(ws)
+    for ws in dead:clients.discard(ws)
 
-async def inference_loop() -> None:
+async def inference_loop():
     global latest_update
-
-    previous_packets = 0
-    previous_bytes = 0
-    last_qwen = ""
-
+    previous_completed=previous_packets=0
+    last_explanation_key=""
     while True:
         await asyncio.sleep(1)
-
-        window = flow_engine.sequence_window()
-        inference = None
+        stats=flow_engine.stats()
+        window=flow_engine.sequence_window()
+        result=None
         if window is not None and models.loaded:
-            try:
-                inference = models.predict(window)
+            try:result=models.predict(window)
             except Exception as exc:
-                latest_update = {
-                    "type": "error",
-                    "message": f"Model inference failed: {exc}",
-                }
-                await broadcast(latest_update)
-                continue
-
-        update = make_update(inference)
-
-        current_packets = flow_engine.total_packets
-        current_bytes = flow_engine.total_bytes
-        update["incoming_packets"] = max(0, current_packets - previous_packets)
-        update["outgoing_packets"] = 0
-        update["bytes_per_second"] = max(0, current_bytes - previous_bytes)
-        update["active_connections"] = flow_engine.active_flows
-
-        previous_packets = current_packets
-        previous_bytes = current_bytes
-
-        if inference is not None:
-            analyst_payload = {
-                "current_detection": update["detection"],
-                "next_stage_forecast": update["prediction"],
-                "risk_assessment": {"score": update["risk"]},
-                "top_shap_triggers": update["top_triggers"],
-            }
-            explanation = await qwen.explain(analyst_payload)
-            last_qwen = explanation
-            update["explanation"] = last_qwen
-        elif last_qwen:
-            update["explanation"] = last_qwen
-
-        latest_update = update
-        await broadcast(update)
-
+                latest_update={"type":"error","time":datetime.now().strftime("%H:%M:%S"),"event":"Model inference failed","message":str(exc)}
+                await broadcast(latest_update);continue
+        payload=build_payload(result,previous_completed,previous_packets)
+        previous_completed,previous_packets=stats["completed_flows"],stats["packets"]
+        if result is not None:
+            key=f"{result.current_label}|{result.next_label}|{result.risk_score}|{result.shap_triggers}"
+            if key!=last_explanation_key:
+                payload["explanation"]=await qwen.explain({"current_detection":payload["detection"],"next_stage_forecast":payload["prediction"],"risk_assessment":{"score":payload["risk"]},"top_shap_triggers":payload["top_triggers"],"mitre":payload["mitre"]})
+                last_explanation_key=key
+        latest_update=payload
+        await broadcast(payload)
 
 @app.get("/")
-async def root():
-    return {
-        "service": "NetForeSight Integration",
-        "status": "online",
-        "models_loaded": models.loaded,
-        "websocket": "/ws/alerts",
-    }
-
+async def root():return {"service":"NetForeSight","status":"online","models_loaded":models.loaded,"websocket":"/ws/alerts"}
 
 @app.get("/api/health")
-async def health():
-    fallback = snapshot_fallback()
-    return {
-        "status": "online",
-        "models_loaded": models.loaded,
-        "class_names": models.class_names,
-        "traffic": flow_engine.stats(),
-        "fallback": fallback,
-    }
+async def health():return {"status":"online" if models.loaded else "degraded","models":models.status(),"qwen":qwen.config(),"capture":{**flow_engine.stats(),"interface":latest_update.get("capture_interface"),"tshark":TSHARK_PATH}}
 
+@app.get("/api/capture/stats")
+async def capture_stats():return flow_engine.stats()
+
+@app.get("/api/models/status")
+async def model_status():return models.status()
 
 @app.get("/api/alerts")
-async def alerts():
-    return latest_update or make_update(None)
+async def alerts():return latest_update
 
+@app.get("/api/predict/forecast")
+async def forecast():
+    window=flow_engine.sequence_window()
+    if window is None:return {"ready":False,"message":"Five completed flows are required before forecasting."}
+    if not models.loaded:return {"ready":False,"message":"Trained model artifacts are not loaded."}
+    result=models.predict(window)
+    return {"ready":True,"predicted_next_stage":result.next_label,"confidence":result.next_confidence,"class_probabilities":result.next_probabilities}
 
 @app.websocket("/ws/alerts")
-async def alerts_ws(websocket: WebSocket):
-    await websocket.accept()
-    clients.add(websocket)
-    if latest_update:
-        await websocket.send_json(latest_update)
+async def websocket_alerts(websocket:WebSocket):
+    await websocket.accept();clients.add(websocket);await websocket.send_json(latest_update)
     try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        clients.discard(websocket)
-    except Exception:
-        clients.discard(websocket)
-
+        while True:await websocket.receive_text()
+    except (WebSocketDisconnect,Exception):clients.discard(websocket)
 
 @app.on_event("startup")
-async def startup():
-    try:
-        load_models_once()
-        print("[+] All trained NetForeSight artifacts loaded.")
-    except Exception as exc:
-        print(f"[-] Model load failed: {exc}")
-    threading.Thread(target=capture_worker, daemon=True).start()
+async def startup_event():
+    try:models.load();print("[+] Trained ML artifacts loaded.")
+    except Exception as exc:print(f"[-] Model load failed: {exc}")
+    threading.Thread(target=capture_worker,daemon=True).start()
     asyncio.create_task(inference_loop())
+
+if __name__=="__main__":
+    import uvicorn
+    uvicorn.run("app:app",host="127.0.0.1",port=8000)
