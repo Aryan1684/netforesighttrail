@@ -17,6 +17,13 @@ class QwenExplainer:
         )
         self.timeout = float(os.getenv("NETFORESIGHT_QWEN_TIMEOUT", "60"))
 
+    def config(self) -> dict:
+        return {
+            "url": self.url,
+            "model": self.model,
+            "timeout": self.timeout,
+        }
+
     async def explain(self, payload: dict) -> str:
         prompt = (
             "You are the local explanation layer for the NetForeSight SOC dashboard. "
@@ -70,4 +77,3 @@ class QwenExplainer:
             "Mitigation Steps: Validate the alert against surrounding traffic and "
             "review affected connections before taking containment action."
         )
-    
