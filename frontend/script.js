@@ -425,8 +425,8 @@ function updateUI() {
 
 function applyLiveNetworkData(data) {
     // Correctly handle both 'telemetry' and 'network_update' message formats from backend
-    STATE.flows = Number(data.flows_sec ?? data.pps ?? data.flows ?? 0);
-    STATE.packets = Number(data.packets_sec ?? data.pps ?? data.packets ?? 0);
+    STATE.flows = Number(data.flows_per_sec ?? data.completed_flows ?? data.flows ?? 0);
+    STATE.packets = Number(data.packets_per_second ?? data.pps ?? data.packets ?? 0);
     STATE.status = data.status === "online" ? "MONITORING" : (data.status ?? "MONITORING");
 
     if (data.event) STATE.event = data.event;
