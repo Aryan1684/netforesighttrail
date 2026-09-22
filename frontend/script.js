@@ -2,7 +2,6 @@
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const _animFrames = new WeakMap();
 
-/** Smoothly counts a number element from its current value to `to`. */
 function animateValue(el, to, { decimals = 0, duration = 550, suffix = '' } = {}) {
     if (!el) return;
     const from = parseFloat((el.textContent || '0').replace(/[^0-9.\-]/g, '')) || 0;
@@ -17,16 +16,12 @@ function animateValue(el, to, { decimals = 0, duration = 550, suffix = '' } = {}
         const p = Math.min(1, (now - start) / duration);
         const val = from + (to - from) * ease(p);
         el.textContent = (decimals ? val.toFixed(decimals) : Math.round(val).toLocaleString()) + suffix;
-        if (p < 1) {
-            _animFrames.set(el, requestAnimationFrame(tick));
-        } else {
-            el.textContent = (decimals ? to.toFixed(decimals) : to.toLocaleString()) + suffix;
-        }
+        if (p < 1) _animFrames.set(el, requestAnimationFrame(tick));
+        else el.textContent = (decimals ? to.toFixed(decimals) : to.toLocaleString()) + suffix;
     }
     _animFrames.set(el, requestAnimationFrame(tick));
 }
 
-/** Briefly flashes an element to draw attention to value updates. */
 function flashValue(el) {
     if (!el || prefersReducedMotion) return;
     el.classList.remove('value-flash');
@@ -34,7 +29,6 @@ function flashValue(el) {
     el.classList.add('value-flash');
 }
 
-/** Pushes a live alert into the toast feed */
 function showToast(title, body, color = '#a855f7') {
     const stack = document.getElementById('toastStack');
     if (!stack) return;
@@ -56,33 +50,33 @@ function showToast(title, body, color = '#a855f7') {
 
 /* ================= ATTACK FORECAST TREE ENGINE ================= */
 const TREE_DATA = [
-    { id:0,  parent:null, name:"Suspicious Network Activity", prob:100, conf:98, desc:"Anomalous behaviour deviating from baseline network traffic patterns." },
-    { id:1,  parent:0, name:"Initial Access",       prob:64, conf:82, desc:"Adversary attempts to gain an initial foothold into the network." },
-    { id:2,  parent:0, name:"Discovery",             prob:23, desc:"Attacker enumerates internal hosts, services and network topology." },
-    { id:3,  parent:0, name:"Credential Access",     prob:13, desc:"Attempt to steal account credentials for further access." },
-    { id:4,  parent:1, name:"Execution",             prob:71, desc:"Malicious code is executed on the compromised host." },
-    { id:5,  parent:1, name:"Persistence",           prob:29, desc:"Attacker maintains footholds across system restarts or credential changes." },
-    { id:6,  parent:2, name:"Lateral Movement",      prob:55, desc:"Pivoting to other hosts using discovered network information." },
-    { id:7,  parent:2, name:"Collection",            prob:45, desc:"Gathering data of interest from discovered internal sources." },
-    { id:8,  parent:3, name:"Privilege Escalation",  prob:67, desc:"Using stolen credentials to gain higher-level permissions." },
-    { id:9,  parent:3, name:"Lateral Movement",      prob:33, desc:"Moving across the network using compromised credentials." },
-    { id:10, parent:4, name:"Privilege Escalation",  prob:58, desc:"Exploiting executed code context to gain elevated privileges." },
-    { id:11, parent:4, name:"Defense Evasion",       prob:42, desc:"Techniques used to avoid detection during execution." },
-    { id:12, parent:5, name:"Defense Evasion",       prob:50, desc:"Hiding persistence mechanisms from security tooling." },
-    { id:13, parent:5, name:"Credential Access",     prob:50, desc:"Harvesting credentials from the persistent foothold." },
-    { id:14, parent:6, name:"Command and Control",   prob:62, desc:"Establishing outbound channel for remote operator control." },
-    { id:15, parent:6, name:"Exfiltration",          prob:38, desc:"Extracting collected data from the compromised host directly." },
-    { id:16, parent:7, name:"Exfiltration",          prob:80, desc:"Bulk transfer of collected sensitive data out of the network." },
-    { id:17, parent:8, name:"Lateral Movement",      prob:70, desc:"Elevated access used to pivot deeper into the network." },
-    { id:18, parent:8, name:"Defense Evasion",       prob:30, desc:"Elevated privileges used to disable security controls." },
-    { id:19, parent:9, name:"Command and Control",   prob:55, desc:"Compromised host establishes covert C2 communication." },
-    { id:20, parent:9, name:"Exfiltration",          prob:45, desc:"Sensitive data extracted using existing lateral access." },
-    { id:21, parent:10, name:"Credential Access",    prob:64, desc:"Privileged access leveraged to dump further credentials." },
-    { id:22, parent:10, name:"Lateral Movement",     prob:36, desc:"Escalated privileges enable movement to critical systems." },
-    { id:23, parent:14, name:"Exfiltration",         prob:75, desc:"Data is exfiltrated through the established C2 channel." },
-    { id:24, parent:14, name:"Impact",               prob:25, desc:"Operator uses C2 access to disrupt or destroy systems/data." },
-    { id:25, parent:17, name:"Command and Control",  prob:58, desc:"Newly reached host establishes a secondary C2 channel." },
-    { id:26, parent:17, name:"Collection",           prob:42, desc:"Sensitive data gathered from newly accessed internal systems." },
+    { id:0, parent:null, name:"Suspicious Network Activity", prob:100, conf:98, desc:"Anomalous behaviour deviating from baseline network traffic patterns." },
+    { id:1, parent:0, name:"Initial Access", prob:64, conf:82, desc:"Adversary attempts to gain an initial foothold into the network." },
+    { id:2, parent:0, name:"Discovery", prob:23, desc:"Attacker enumerates internal hosts, services and network topology." },
+    { id:3, parent:0, name:"Credential Access", prob:13, desc:"Attempt to steal account credentials for further access." },
+    { id:4, parent:1, name:"Execution", prob:71, desc:"Malicious code is executed on the compromised host." },
+    { id:5, parent:1, name:"Persistence", prob:29, desc:"Attacker maintains footholds across system restarts or credential changes." },
+    { id:6, parent:2, name:"Lateral Movement", prob:55, desc:"Pivoting to other hosts using discovered network information." },
+    { id:7, parent:2, name:"Collection", prob:45, desc:"Gathering data of interest from discovered internal sources." },
+    { id:8, parent:3, name:"Privilege Escalation", prob:67, desc:"Using stolen credentials to gain higher-level permissions." },
+    { id:9, parent:3, name:"Lateral Movement", prob:33, desc:"Moving across the network using compromised credentials." },
+    { id:10, parent:4, name:"Privilege Escalation", prob:58, desc:"Exploiting executed code context to gain elevated privileges." },
+    { id:11, parent:4, name:"Defense Evasion", prob:42, desc:"Techniques used to avoid detection during execution." },
+    { id:12, parent:5, name:"Defense Evasion", prob:50, desc:"Hiding persistence mechanisms from security tooling." },
+    { id:13, parent:5, name:"Credential Access", prob:50, desc:"Harvesting credentials from the persistent foothold." },
+    { id:14, parent:6, name:"Command and Control", prob:62, desc:"Establishing outbound channel for remote operator control." },
+    { id:15, parent:6, name:"Exfiltration", prob:38, desc:"Extracting collected data from the compromised host directly." },
+    { id:16, parent:7, name:"Exfiltration", prob:80, desc:"Bulk transfer of collected sensitive data out of the network." },
+    { id:17, parent:8, name:"Lateral Movement", prob:70, desc:"Elevated access used to pivot deeper into the network." },
+    { id:18, parent:8, name:"Defense Evasion", prob:30, desc:"Elevated privileges used to disable security controls." },
+    { id:19, parent:9, name:"Command and Control", prob:55, desc:"Compromised host establishes covert C2 communication." },
+    { id:20, parent:9, name:"Exfiltration", prob:45, desc:"Sensitive data extracted using existing lateral access." },
+    { id:21, parent:10, name:"Credential Access", prob:64, desc:"Privileged access leveraged to dump further credentials." },
+    { id:22, parent:10, name:"Lateral Movement", prob:36, desc:"Escalated privileges enable movement to critical systems." },
+    { id:23, parent:14, name:"Exfiltration", prob:75, desc:"Data is exfiltrated through the established C2 channel." },
+    { id:24, parent:14, name:"Impact", prob:25, desc:"Operator uses C2 access to disrupt or destroy systems/data." },
+    { id:25, parent:17, name:"Command and Control", prob:58, desc:"Newly reached host establishes a secondary C2 channel." },
+    { id:26, parent:17, name:"Collection", prob:42, desc:"Sensitive data gathered from newly accessed internal systems." },
 ];
 
 const BOX_W = 200, BOX_H = 62, COL_GAP = 92, ROW_HEIGHT = 76, PAD = 40;
@@ -108,8 +102,7 @@ function buildTreeAndRender() {
     let leafCounter = 0;
     (function assignRow(node) {
         if (node.children.length === 0) {
-            node.row = leafCounter;
-            leafCounter += 1;
+            node.row = leafCounter++;
         } else {
             node.children.forEach(assignRow);
             const rows = node.children.map(c => c.row);
@@ -134,11 +127,10 @@ function buildTreeAndRender() {
 
     const contentW = PAD * 2 + BOX_W + maxDepth * (BOX_W + COL_GAP);
     const contentH = PAD * 2 + BOX_H + maxRow * ROW_HEIGHT;
-
     const canvas = document.getElementById('forecastTreeCanvas');
     const svg = document.getElementById('forecastTreeSvg');
     if (!canvas || !svg) return;
-    
+
     canvas.style.width = contentW + 'px';
     canvas.style.height = contentH + 'px';
     svg.setAttribute('width', contentW);
@@ -151,13 +143,11 @@ function buildTreeAndRender() {
         const x2 = n.x, y2 = n.y + BOX_H / 2;
         const midX = x1 + (x2 - x1) / 2;
         const d = `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`;
-
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         path.setAttribute('d', d);
         path.setAttribute('fill', 'none');
         path.setAttribute('class', 'tree-line');
         path.dataset.child = n.id;
-
         if (n.isTop) {
             path.setAttribute('stroke', 'rgba(129, 140, 248,0.55)');
             path.setAttribute('stroke-width', '2.4');
@@ -176,7 +166,6 @@ function buildTreeAndRender() {
         box.style.width = BOX_W + 'px';
         box.style.height = BOX_H + 'px';
         box.dataset.id = n.id;
-
         if (n.parent === null) box.classList.add('tree-box-root');
         else if (n.isTop) box.classList.add('tree-box-top');
 
@@ -186,10 +175,8 @@ function buildTreeAndRender() {
         inner += `<div class="stage-prob">Probability: ${n.prob}%</div>`;
         if (n.conf) inner += `<div class="stage-conf">Confidence: ${n.conf}%</div>`;
         box.innerHTML = inner;
-
         box.addEventListener('mouseenter', () => highlightPath(n.id, nodeMap));
         box.addEventListener('mouseleave', clearHighlight);
-
         canvas.appendChild(box);
     });
 }
@@ -232,6 +219,7 @@ let STATE = {
     next_attack: "Benign",
     mitre: "Reconnaissance",
     confidence: 0,
+    forecastConfidence: 0,
     top_triggers: [],
     flows: 0,
     packets: 0,
@@ -240,13 +228,13 @@ let STATE = {
     trafficHistory: []
 };
 
-for (let i = 0; i < 20; i++) {
-    STATE.trafficHistory.push({ flows: 0, packets: 0 });
-}
+for (let i = 0; i < 20; i++) STATE.trafficHistory.push({ flows: 0, packets: 0 });
 
 let CHARTS = {};
-const rand = (min, max) => Math.random() * (max - min) + min;
-const formatTime = () => new Date().toLocaleTimeString("en-US", { hour12: false });
+
+function formatTime() {
+    return new Date().toLocaleTimeString("en-US", { hour12: false });
+}
 
 function initCharts() {
     const ctx = document.getElementById('trafficReportChart');
@@ -303,7 +291,6 @@ function updateUI() {
     animateValue(document.getElementById("flowsPerSec"), STATE.flows, { duration: 400 });
     animateValue(document.getElementById("packetsPerSec"), STATE.packets, { duration: 400 });
 
-    // Triggers / Events list
     const triggers = STATE.top_triggers || [];
     animateValue(document.getElementById("eventCount"), triggers.length, { duration: 300 });
     let eventHTML = "";
@@ -320,10 +307,8 @@ function updateUI() {
     }
     document.getElementById("eventsList").innerHTML = eventHTML;
 
-    // Status Card & Threat Level
     let status = STATE.status || "MONITORING";
     let statusColor, glowClass, threatLabel;
-    
     if (STATE.risk < 35) {
         statusColor = "#34d399"; glowClass = "glow-green"; threatLabel = "LOW";
     } else if (STATE.risk <= 70) {
@@ -378,33 +363,36 @@ function updateUI() {
         }
     });
 
-    // Confidence
     const confVal = (STATE.confidence || 0).toFixed(1) + "%";
-    document.getElementById("confidence").textContent = confVal;
-    document.getElementById("detectionConf").textContent = confVal;
-    if (document.getElementById("heroAccuracy")) {
-        document.getElementById("heroAccuracy").textContent = confVal;
-    }
+    const confidenceEl = document.getElementById("confidence");
+    const detectionConfEl = document.getElementById("detectionConf");
+    if (confidenceEl) confidenceEl.textContent = confVal;
+    if (detectionConfEl) detectionConfEl.textContent = confVal;
+    if (document.getElementById("heroAccuracy")) document.getElementById("heroAccuracy").textContent = confVal;
 
-    // Prediction Box Mapping
     const rawEvent = (STATE.event || "").replace("Detected: ", "");
-    document.getElementById("currentStage").textContent = rawEvent || "Benign";
-    document.getElementById("predictedStage").textContent = STATE.next_attack || "Benign";
-    
+    const currentStageEl = document.getElementById("currentStage");
+    const predictedStageEl = document.getElementById("predictedStage");
+    if (currentStageEl) currentStageEl.textContent = rawEvent || "Benign";
+    if (predictedStageEl) predictedStageEl.textContent = STATE.next_attack || "Benign";
+
     const probPct = Math.round(STATE.confidence || 0);
     animateValue(document.getElementById("probValue"), probPct, { suffix: "%", duration: 400 });
     animateValue(document.getElementById("probPercentage"), probPct, { suffix: "%", duration: 400 });
-    document.getElementById("probBar").style.width = probPct + "%";
-    document.getElementById("predictedTime").textContent = `${probPct}% likely`;
+    const probBar = document.getElementById("probBar");
+    if (probBar) probBar.style.width = probPct + "%";
+    const predictedTime = document.getElementById("predictedTime");
+    if (predictedTime) predictedTime.textContent = `${probPct}% likely`;
 
-    document.getElementById("forecastText").textContent = `Mitre Tactic: ${STATE.mitre || "Reconnaissance"} — Threat Level: ${threatLabel}`;
+    const forecastText = document.getElementById("forecastText");
+    if (forecastText) forecastText.textContent = `Mitre Tactic: ${STATE.mitre || "Reconnaissance"} — Threat Level: ${threatLabel}`;
 
-    // Quick Stats & MITRE
     animateValue(document.getElementById("anomalyScore"), STATE.anomaly || 0, { decimals: 1, duration: 400 });
-    document.getElementById("mitreActiveStage").textContent = STATE.mitre || "Reconnaissance";
-    document.getElementById("lastUpdate").textContent = formatTime();
+    const mitreActiveStage = document.getElementById("mitreActiveStage");
+    if (mitreActiveStage) mitreActiveStage.textContent = STATE.mitre || "Reconnaissance";
+    const lastUpdate = document.getElementById("lastUpdate");
+    if (lastUpdate) lastUpdate.textContent = formatTime();
 
-    // Highlight MITRE Table Row
     const activeMitre = (STATE.mitre || "").toLowerCase();
     document.querySelectorAll("#mitreTableBody tr").forEach(row => {
         const tactic = (row.dataset.tactic || "").toLowerCase();
@@ -425,7 +413,6 @@ function updateUI() {
 }
 
 function applyLiveNetworkData(data) {
-    // Correctly handle both 'telemetry' and 'network_update' message formats from backend
     STATE.flows = Number(data.flows_per_sec ?? data.completed_flows ?? data.flows ?? 0);
     STATE.packets = Number(data.packets_per_second ?? data.pps ?? data.packets ?? 0);
     STATE.status = data.status === "online" ? "MONITORING" : (data.status ?? "MONITORING");
@@ -434,12 +421,12 @@ function applyLiveNetworkData(data) {
     if (data.risk !== undefined) STATE.risk = Number(data.risk);
     if (data.next_attack) STATE.next_attack = data.next_attack;
     if (data.mitre) STATE.mitre = typeof data.mitre === "string" ? data.mitre : (data.mitre.tactic || data.mitre.technique || "Unmapped");
-    if (data.confidence !== undefined) STATE.confidence = Number(data.confidence);\n    if (data.forecast_confidence !== undefined) STATE.forecastConfidence = Number(data.forecast_confidence);
+    if (data.confidence !== undefined) STATE.confidence = Number(data.confidence);
+    if (data.forecast_confidence !== undefined) STATE.forecastConfidence = Number(data.forecast_confidence);
     if (data.anomaly !== undefined) STATE.anomaly = Number(data.anomaly);
 
     STATE.trafficHistory.push({ flows: STATE.flows, packets: STATE.packets });
     if (STATE.trafficHistory.length > 20) STATE.trafficHistory.shift();
-
     updateUI();
 }
 
@@ -449,27 +436,7 @@ function fetchLatestForecast() {
         .then(data => {
             if (data.predicted_next_stage) {
                 STATE.next_attack = data.predicted_next_stage;
-                STATE.confidence = (data.confidence || 0) * 100;
-
-                // Map UNSW prediction classes to MITRE & Risk
-                const cls = (data.predicted_next_stage || "").toLowerCase();
-                if (cls.includes("normal") || cls.includes("benign")) {
-                    STATE.mitre = "Reconnaissance";
-                    STATE.risk = 10;
-                    STATE.event = "Detected: Benign";
-                } else if (cls.includes("reconnaissance") || cls.includes("fuzzers")) {
-                    STATE.mitre = "Reconnaissance";
-                    STATE.risk = 45;
-                    STATE.event = "Detected: Network Reconnaissance";
-                } else if (cls.includes("exploits") || cls.includes("shellcode")) {
-                    STATE.mitre = "Initial Access";
-                    STATE.risk = 85;
-                    STATE.event = "Detected: Active Exploitation";
-                } else {
-                    STATE.mitre = "Command and Control";
-                    STATE.risk = 65;
-                    STATE.event = `Detected: ${data.predicted_next_stage}`;
-                }
+                STATE.forecastConfidence = (data.confidence || 0) * 100;
                 updateUI();
             }
         })
@@ -480,7 +447,6 @@ function connectNetForeSightWebSocket() {
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
     const host = window.location.hostname || "127.0.0.1";
     const socket = new WebSocket(`${protocol}://${host}:8000/ws/alerts`);
-
     window.netForeSightSocket = socket;
 
     socket.addEventListener("open", () => {
@@ -493,9 +459,7 @@ function connectNetForeSightWebSocket() {
     socket.addEventListener("message", event => {
         try {
             const data = JSON.parse(event.data);
-            if (data.type === "telemetry" || data.type === "network_update") {
-                applyLiveNetworkData(data);
-            }
+            if (data.type === "telemetry" || data.type === "network_update") applyLiveNetworkData(data);
         } catch (error) {
             console.error("Invalid WebSocket payload:", error);
         }
@@ -516,8 +480,6 @@ buildTreeAndRender();
 initCharts();
 updateUI();
 connectNetForeSightWebSocket();
-
-// Periodically fetch AI forecast from FastAPI backend
 setInterval(fetchLatestForecast, 2000);
 
 /* ================= NAV SCROLLSPY ================= */
@@ -550,7 +512,6 @@ setInterval(fetchLatestForecast, 2000);
     });
 })();
 
-/* ================= HEADER SHRINK ON SCROLL ================= */
 (function initHeaderShrink() {
     const header = document.querySelector('header.site-header');
     if (!header) return;
@@ -559,7 +520,6 @@ setInterval(fetchLatestForecast, 2000);
     window.addEventListener('scroll', onScroll, { passive: true });
 })();
 
-/* ================= STAGGERED REVEAL ================= */
 (function initScrollReveal() {
     if (prefersReducedMotion) return;
     const groups = document.querySelectorAll('main > .grid, #prediction');
