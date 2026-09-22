@@ -185,6 +185,7 @@ class FlowEngine:
         self.outgoing_packets = 0
         self.protocol_counts = Counter()
         self.completed_flow_count = 0
+        self.started_at = time.time()
 
     @staticmethod
     def packet_time(packet: Any) -> float:
@@ -437,4 +438,6 @@ class FlowEngine:
             "sequence_ready": len(self.sequence) == self.sequence_length,
             "incoming_packets": self.incoming_packets,
             "outgoing_packets": self.outgoing_packets,
+            "packets_per_second": self.total_packets / max(time.time() - self.started_at, 1e-6),
+            "bytes_per_second": self.total_bytes / max(time.time() - self.started_at, 1e-6),
         }
